@@ -1,11 +1,13 @@
 #include <iostream>
 #include <string>
+#include <cctype>
+#include <stack>
 
 using namespace std;
 
 // define const
-const int HASH_TABLE_LENGTH = 31;
-const int NODE_ARRAY_LENGTH = 31;
+const int HASH_TABLE_LENGTH = 101;
+const int NODE_ARRAY_LENGTH = 101;
 
 // define HashTable
 class HashSlot {
@@ -182,7 +184,7 @@ string Preprocessing() {
             }
         }
         else if(token == "'") {
-            newCommand += "( qoute ";
+            newCommand += "( quote ";
             int numberOfLeftParen = 0;
             do {
                 token = GetNextToken();
@@ -206,7 +208,7 @@ string Preprocessing() {
 
 // read input
 int Read() {
-    int root, temp, tokenHashValue;
+    int root=0, temp, tokenHashValue;
     bool first = true;
     string newCommand;
 
@@ -257,12 +259,208 @@ int Read() {
     }
 }
 
+bool isNumber(int tokenIndex) {
+    int result;
+    string symbol = HashTable[-tokenIndex].symbol;
+
+    for(int i = 0; i < symbol.length(); i++) {
+        if(!isdigit(symbol[i])) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+int functionDefinition(int tokenIndex) {
+    for(int i = 1; i < tokenIndex; i++) {
+        if(NodeArray[i].left == NodeArray[tokenIndex].left) {
+            return i;
+        }
+    }
+    return tokenIndex;
+}
+
+bool isUserDefinedFunction(int root) {
+    if(root < 0) {
+        return false;
+    }
+    int value = HashTable[-NodeArray[root].left].value;
+
+    return value > 0;
+}
+
+int Eval(int root) {
+    int result, tokenIndex;
+
+    tokenIndex = NodeArray[root].left;
+    if(tokenIndex == GetHashValue("+")) {
+        int result = GetHashValue(to_string(stof(HashTable[-Eval(NodeArray[NodeArray[root].right].left)].symbol)
+                                        + stof(HashTable[-Eval(NodeArray[NodeArray[NodeArray[root].right].right].left)].symbol)));
+        return result;
+    }
+
+    else if(tokenIndex == GetHashValue("-")) {
+        int result = GetHashValue(to_string(stof(HashTable[-Eval(NodeArray[NodeArray[root].right].left)].symbol)
+                                        - stof(HashTable[-Eval(NodeArray[NodeArray[NodeArray[root].right].right].left)].symbol)));
+        return result;
+    }
+
+    else if(tokenIndex == GetHashValue("*")) {
+        int result = GetHashValue(to_string(stof(HashTable[-Eval(NodeArray[NodeArray[root].right].left)].symbol)
+                                        * stof(HashTable[-Eval(NodeArray[NodeArray[NodeArray[root].right].right].left)].symbol)));
+        return result;
+    }
+
+    else if(tokenIndex == GetHashValue("/")) {
+        int result = GetHashValue(to_string(stof(HashTable[-Eval(NodeArray[NodeArray[root].right].left)].symbol)
+                                        / stof(HashTable[-Eval(NodeArray[NodeArray[NodeArray[root].right].right].left)].symbol)));
+        return result;
+    }
+
+    else if(tokenIndex == GetHashValue("number?")) {
+        if(isNumber(Eval(NodeArray[NodeArray[root].right].left))) {
+            return GetHashValue("#t");
+        }
+        else {
+            return GetHashValue("#f");
+        }
+    }
+
+    else if(tokenIndex == GetHashValue("symbol?")) {
+        try {
+            if(!isNumber(Eval(NodeArray[NodeArray[root].right].left))) {
+                return GetHashValue("#t");
+            }
+            else {
+                return GetHashValue("#f");
+            }
+        }
+        catch(const exception& e) {
+            return GetHashValue("#f");
+        }
+    }
+
+    else if(tokenIndex == GetHashValue("null?")) {
+        try {
+            int result = Eval(NodeArray[NodeArray[root].right].left);
+            if(!result) {
+                return GetHashValue("#t");
+            }
+            return GetHashValue("#f");
+        }
+        catch(const exception& e) {
+            return GetHashValue("#t");
+        }
+    }
+
+    else if(tokenIndex == GetHashValue("cons")) {
+        int len = length(NodeArray);
+        NodeArray[len+1].left = Eval(NodeArray[NodeArray[root].right].left);
+        NodeArray[len+1].right = Eval(NodeArray[NodeArray[NodeArray[root].right].right].left);
+        return len+1;
+    }
+
+    else if(tokenIndex == GetHashValue("cond")) {
+        while(NodeArray[NodeArray[root].right].right) {
+            root = NodeArray[root].right;
+            if(Eval(NodeArray[NodeArray[root].left].left) == GetHashValue("#t")) {
+                return Eval(NodeArray[NodeArray[root].left].right);
+            }
+        }
+
+        if(NodeArray[NodeArray[NodeArray[root].right].left].left != GetHashValue("else")) {
+            cout << "error: else omitted" << endl;
+        }
+        return Eval(NodeArray[NodeArray[NodeArray[NodeArray[root].right].left].right].left);
+    }
+
+    else if(tokenIndex == GetHashValue("car")) {
+        int result = NodeArray[Eval(NodeArray[NodeArray[root].right].left)].left;
+        return result;
+    }
+
+    else if(tokenIndex == GetHashValue("cdr")) {
+        int result = NodeArray[Eval(NodeArray[NodeArray[root].right].left)].right;
+        return result;
+    }
+
+    else if(tokenIndex == GetHashValue("define")) {
+        // if function define
+        if(NodeArray[NodeArray[NodeArray[NodeArray[root].right].right].left].left
+                == GetHashValue("lambda")) {
+            HashTable[-NodeArray[NodeArray[root].right].left].value
+                = Eval(NodeArray[NodeArray[NodeArray[root].right].right].left);
+        }
+
+        // if variable define
+        else {
+            HashTable[-NodeArray[NodeArray[root].right].left].value
+                = Eval(NodeArray[NodeArray[NodeArray[root].right].right].left);
+        }
+    }
+
+    else if(tokenIndex == GetHashValue("quote")) {
+        int result = NodeArray[NodeArray[root].right].left;
+        return result;
+    }
+
+    else if(isUserDefinedFunction(root)) {
+        stack<HashSlot> s;
+        HashSlot slot;
+        int result, param, arg, lambda, eval, a, b;
+
+        lambda = HashTable[-NodeArray[root].left].value;
+
+        param = NodeArray[NodeArray[lambda].right].left;
+        arg = NodeArray[root].right;
+        do {
+            // push current values to stack
+            slot = HashTable[-NodeArray[param].left];
+            s.push(slot);
+
+            // set parameters by function argument
+            HashTable[-NodeArray[param].left].value = Eval(NodeArray[arg].left);
+
+            // move to next parameter and argument
+            param = NodeArray[param].right;
+            arg = NodeArray[arg].right;
+        } while(param != 0);
+
+
+        // evaluate
+        eval = Eval(NodeArray[NodeArray[NodeArray[lambda].right].right].left);
+
+        // pop the values from stack
+        param = NodeArray[NodeArray[lambda].right].left;
+        while(!s.empty()) {
+            slot = s.top();
+            HashTable[-NodeArray[param].left].value = slot.value;
+
+            s.pop();
+        }
+
+        return eval;
+    }
+
+    else if(root < 0) {
+        int result = HashTable[-root].value;
+        if(result != 0) {
+            return result;
+        }
+    }
+
+    result = root;
+
+    return result;
+}
+
 // print parse tree
 void PRINT(int index, bool startList) {
     if(index == 0) {
         cout << "()";
     }
-    else {
+    else if(index > 0) {
         if(startList == true) {
             cout << "(";
         }
@@ -284,12 +482,18 @@ void PRINT(int index, bool startList) {
     }
 }
 
+void PRINT_VALUE(int index) {
+    if(index < 0) {
+        cout << HashTable[-index].symbol << endl;
+    }
+}
+
 // print hash table
 void PrintHashTable() {
     cout << "Hash table = " << endl;
     for(int i = 0; i < HASH_TABLE_LENGTH; i++) {
         if(!HashTable[i].symbol.empty()) {
-            cout << -i << ":" << HashTable[i].symbol << endl;
+            cout << -i << ":" << HashTable[i].symbol << "," << HashTable[i].value << endl;
         }
     }
     cout << endl;
@@ -299,7 +503,13 @@ void PrintHashTable() {
 void PrintNodeArray() {
     cout << "Node array = " << endl;
     for(int i = 0; i < NODE_ARRAY_LENGTH; i++) {
-        cout << i << ":" << NodeArray[i].left << "," << NodeArray[i].right << endl;
+        if(NodeArray[i].left) {
+            cout << i << ":" << NodeArray[i].left << " ";
+            if(NodeArray[i].left < 0) {
+                   cout << "[" << HashTable[-NodeArray[i].left].symbol << "] ";
+            }
+            cout << "," << NodeArray[i].right << endl;
+        }
     }
     cout << endl;
 }
@@ -318,21 +528,27 @@ void freeNodeArray() {
 int main()
 {
     string newCommand;
-    int root;
+    int root, result;
     while(1) {
         getline(cin, command);
         newCommand = Preprocessing();
         command = newCommand;
 
         root = Read();
+        result = Eval(root);
 
         if(root != 0) {
             cout << "Free list's root = " << length(NodeArray)+1 << endl;
-            cout << "Parse tree's root = " << root << endl;
+            cout << "Parse tree's root = " << result << endl;
             cout << endl;
             PrintNodeArray();
             PrintHashTable();
-            PRINT(root, true);
+            if(result >= 0) {
+                PRINT(result, true);
+            }
+            else {
+                PRINT_VALUE(result);
+            }
             cout << endl;
 
             // freeNodeArray();
