@@ -52,6 +52,52 @@ unsigned int StringToInt(string s) {
     return answer;
 }
 
+// hash function using StringToInt
+int Hash(string k, int i) {
+    return (StringToInt(k) + i) % HASH_TABLE_LENGTH + 1;
+}
+
+// hash insert
+int HashInsert(string k) {
+    for(int i = 0; i < HASH_TABLE_LENGTH; i++) {
+        int j = Hash(k, i);
+        if(HashTable[j].symbol == "") {
+            HashTable[j].symbol = k;
+            return j;
+        }
+    }
+
+    return -1;
+}
+
+// hash search
+int HashSearch(string k) {
+    for(int i = 0; i < HASH_TABLE_LENGTH; i++) {
+        int j = Hash(k, i);
+        if(HashTable[j].symbol == k) {
+            return j;
+        }
+        else if(HashTable[j].symbol == "") {
+            return -1;
+        }
+    }
+
+    return -1;
+}
+
+// if the input string does not exist in the hash table,
+// insert it and return the hash value.
+int GetHashValue(string str) {
+    int value;
+
+    value = HashSearch(str);
+    if(value == -1) {
+        value = HashInsert(str);
+    }
+
+    return -value;
+}
+
 // processes input and returns a token
 string GetNextToken() {
     char ch;
@@ -121,49 +167,6 @@ string GetNextToken() {
     }
 
     return str;
-}
-
-// hash function using StringToInt
-int Hash(string k, int i) {
-    return (StringToInt(k) + i) % HASH_TABLE_LENGTH;
-}
-
-// hash insert
-int HashInsert(string k) {
-    for(int i = 0; i < HASH_TABLE_LENGTH; i++) {
-        int j = Hash(k, i);
-        if(HashTable[j].symbol == "") {
-            HashTable[j].symbol = k;
-            return j;
-        }
-    }
-
-    return -1;
-}
-
-// hash search
-int HashSearch(string k) {
-    for(int i = 0; i < HASH_TABLE_LENGTH; i++) {
-        int j = Hash(k, i);
-        if(HashTable[j].symbol == k) {
-            return j;
-        }
-    }
-
-    return -1;
-}
-
-// if the input string does not exist in the hash table,
-// insert it and return the hash value.
-int GetHashValue(string str) {
-    int value;
-
-    value = HashSearch(str);
-    if(value == -1) {
-        value = HashInsert(str);
-    }
-
-    return -value;
 }
 
 // return length of NodeArray
@@ -263,7 +266,6 @@ int Read() {
             
             // if the nested list appears, do recursion
             if(tokenHashValue == GetHashValue("(")) {
-                // cin.putback('(');
                 command = '(' + command;
                 NodeArray[temp].left = Read();
             }
@@ -370,7 +372,7 @@ int Eval(int root) {
     // if token is "null?"
     else if(tokenIndex == GetHashValue("null?")) {
         try {
-            int result = Eval(NodeArray[NodeArray[root].right].left);
+            int result = HashTable[-Eval(NodeArray[NodeArray[root].right].left)].value;
             if(!result) {
                 return GetHashValue("#t");
             }
@@ -386,6 +388,7 @@ int Eval(int root) {
 
         // allocate new memory and return it
         int len = length(NodeArray);
+        NodeArray[len+1].id = len+1;
         NodeArray[len+1].left = Eval(NodeArray[NodeArray[root].right].left);
         NodeArray[len+1].right = Eval(NodeArray[NodeArray[NodeArray[root].right].right].left);
         return len+1;
@@ -472,7 +475,6 @@ int Eval(int root) {
             arg = NodeArray[arg].right;
         } while(param != 0);
 
-
         // evaluate
         eval = Eval(NodeArray[NodeArray[NodeArray[lambda].right].right].left);
 
@@ -488,10 +490,18 @@ int Eval(int root) {
         return eval;
     }
 
-    // if root is already evaluated, return its value
     else if(root < 0) {
         int result = HashTable[-root].value;
-        return result;
+        
+        // if root is already evaluated, return its value
+        if(result) {
+            return result;
+        }
+
+        // otherwise, just return root
+        else {
+            return root;
+        }
     }
 
     return root;
@@ -522,7 +532,6 @@ void PRINT(int index, bool startList) {
             cout << ") ";
         }
     }
-    cout << endl;
 }
 
 // print value
@@ -617,12 +626,13 @@ int main()
             // cout << "Parse tree's root = " << root << endl;
             // cout << endl;
 
-            // PrintNodeArray();
-            // PrintHashTable();
+            PrintNodeArray();
+            PrintHashTable();
 
             if(result >= 0) {
                 if(NodeArray[root].left != GetHashValue("define")) {
                     PRINT(result, true);
+                    cout << endl;
                 }
             }
             else {
