@@ -31,6 +31,10 @@ Node NodeArray[NODE_ARRAY_LENGTH];
 
 string command;
 
+// stack for evaluation of user defined function
+stack<HashSlot> s;
+
+// convert string to int for hash function
 unsigned int StringToInt(string s) {
     int length = (int)s.length();
     unsigned int answer = 0;
@@ -54,7 +58,7 @@ string GetNextToken() {
     string str;
 
     while(1) {
-        // ch = cin.get();
+        // read the first character
         ch = command[0];
         command.erase(0, 1);
 
@@ -87,7 +91,6 @@ string GetNextToken() {
 
         else if(ch == ')') {
             if(str.length() > 0) {
-                // cin.putback(ch);
                 command = ch + command;
                 break;
             }
@@ -97,9 +100,15 @@ string GetNextToken() {
             }
         }
 
+        // stop reading when encountering quote
         else if(ch == '\'') {
             str += ch;
             break;
+        }
+
+        // ignore indentation
+        else if(ch == '\t') {
+            continue;
         }
 
         // keep reading
@@ -168,24 +177,38 @@ int length(Node array[]) {
     return -1;
 }
 
+// preprocess command(lambda, quote)
 string Preprocessing() {
     string newCommand, token;
 
+    // until the end of command
     while(!(token = GetNextToken()).empty()) {
+
+        // if token is define
         if(token == "define") {
             newCommand += "define ";
             token = GetNextToken();
+
+            // if function define, insert lambda
             if(token == "(") {
                 token = GetNextToken();
                 newCommand += (token + " ( lambda ( " + Preprocessing() + ")");
             }
+
+            // if variable define, do nothing
             else {
                 newCommand += (token + " ");
             }
         }
+
+        // if token is quote
         else if(token == "'") {
+
+            // insert quote
             newCommand += "( quote ";
             int numberOfLeftParen = 0;
+
+            // read until the close of parentheses
             do {
                 token = GetNextToken();
                 newCommand += (token + " ");
@@ -259,10 +282,13 @@ int Read() {
     }
 }
 
+
+// check whether the value corresponding to a given
+// index in a hash table is a number
 bool isNumber(int tokenIndex) {
-    int result;
     string symbol = HashTable[-tokenIndex].symbol;
 
+    // check each digit
     for(int i = 0; i < symbol.length(); i++) {
         if(!isdigit(symbol[i])) {
             return false;
@@ -272,15 +298,7 @@ bool isNumber(int tokenIndex) {
     return true;
 }
 
-int functionDefinition(int tokenIndex) {
-    for(int i = 1; i < tokenIndex; i++) {
-        if(NodeArray[i].left == NodeArray[tokenIndex].left) {
-            return i;
-        }
-    }
-    return tokenIndex;
-}
-
+// check whether it is user defined function
 bool isUserDefinedFunction(int root) {
     if(root < 0) {
         return false;
@@ -290,34 +308,41 @@ bool isUserDefinedFunction(int root) {
     return value > 0;
 }
 
+// evaluate
 int Eval(int root) {
     int result, tokenIndex;
 
     tokenIndex = NodeArray[root].left;
+
+    // if token is "+"
     if(tokenIndex == GetHashValue("+")) {
         int result = GetHashValue(to_string(stof(HashTable[-Eval(NodeArray[NodeArray[root].right].left)].symbol)
                                         + stof(HashTable[-Eval(NodeArray[NodeArray[NodeArray[root].right].right].left)].symbol)));
         return result;
     }
 
+    // if token is "-"
     else if(tokenIndex == GetHashValue("-")) {
         int result = GetHashValue(to_string(stof(HashTable[-Eval(NodeArray[NodeArray[root].right].left)].symbol)
                                         - stof(HashTable[-Eval(NodeArray[NodeArray[NodeArray[root].right].right].left)].symbol)));
         return result;
     }
 
+    // if token is "*"
     else if(tokenIndex == GetHashValue("*")) {
         int result = GetHashValue(to_string(stof(HashTable[-Eval(NodeArray[NodeArray[root].right].left)].symbol)
                                         * stof(HashTable[-Eval(NodeArray[NodeArray[NodeArray[root].right].right].left)].symbol)));
         return result;
     }
 
+    // if token is "/"
     else if(tokenIndex == GetHashValue("/")) {
         int result = GetHashValue(to_string(stof(HashTable[-Eval(NodeArray[NodeArray[root].right].left)].symbol)
                                         / stof(HashTable[-Eval(NodeArray[NodeArray[NodeArray[root].right].right].left)].symbol)));
         return result;
     }
 
+    // if token is "number?"
     else if(tokenIndex == GetHashValue("number?")) {
         if(isNumber(Eval(NodeArray[NodeArray[root].right].left))) {
             return GetHashValue("#t");
@@ -327,6 +352,7 @@ int Eval(int root) {
         }
     }
 
+    // if token is "symbol?"
     else if(tokenIndex == GetHashValue("symbol?")) {
         try {
             if(!isNumber(Eval(NodeArray[NodeArray[root].right].left))) {
@@ -341,6 +367,7 @@ int Eval(int root) {
         }
     }
 
+    // if token is "null?"
     else if(tokenIndex == GetHashValue("null?")) {
         try {
             int result = Eval(NodeArray[NodeArray[root].right].left);
@@ -354,38 +381,52 @@ int Eval(int root) {
         }
     }
 
+    // if token is "cons"
     else if(tokenIndex == GetHashValue("cons")) {
+
+        // allocate new memory and return it
         int len = length(NodeArray);
         NodeArray[len+1].left = Eval(NodeArray[NodeArray[root].right].left);
         NodeArray[len+1].right = Eval(NodeArray[NodeArray[NodeArray[root].right].right].left);
         return len+1;
     }
 
+    // if token is "cond"
     else if(tokenIndex == GetHashValue("cond")) {
+
+        // check each condition and return expression if the condition is true
         while(NodeArray[NodeArray[root].right].right) {
             root = NodeArray[root].right;
             if(Eval(NodeArray[NodeArray[root].left].left) == GetHashValue("#t")) {
-                return Eval(NodeArray[NodeArray[root].left].right);
+                return Eval(NodeArray[NodeArray[NodeArray[root].left].right].left);
             }
         }
 
+        // if "else" is omitted, raise error
         if(NodeArray[NodeArray[NodeArray[root].right].left].left != GetHashValue("else")) {
             cout << "error: else omitted" << endl;
+            return 0;
         }
+
+        // return the expression of "else"
         return Eval(NodeArray[NodeArray[NodeArray[NodeArray[root].right].left].right].left);
     }
 
+    // if token is "car"
     else if(tokenIndex == GetHashValue("car")) {
         int result = NodeArray[Eval(NodeArray[NodeArray[root].right].left)].left;
         return result;
     }
 
+    // if token is "cdr"
     else if(tokenIndex == GetHashValue("cdr")) {
         int result = NodeArray[Eval(NodeArray[NodeArray[root].right].left)].right;
         return result;
     }
 
+    // if token is "define"
     else if(tokenIndex == GetHashValue("define")) {
+
         // if function define
         if(NodeArray[NodeArray[NodeArray[NodeArray[root].right].right].left].left
                 == GetHashValue("lambda")) {
@@ -400,26 +441,30 @@ int Eval(int root) {
         }
     }
 
+    // if token is "quote"
     else if(tokenIndex == GetHashValue("quote")) {
         int result = NodeArray[NodeArray[root].right].left;
         return result;
     }
 
+    // if token is user defined function
     else if(isUserDefinedFunction(root)) {
-        stack<HashSlot> s;
         HashSlot slot;
         int result, param, arg, lambda, eval, a, b;
 
         lambda = HashTable[-NodeArray[root].left].value;
 
+        // set the first parameter and argument
         param = NodeArray[NodeArray[lambda].right].left;
         arg = NodeArray[root].right;
+
+        // until the end of parameter
         do {
             // push current values to stack
             slot = HashTable[-NodeArray[param].left];
             s.push(slot);
 
-            // set parameters by function argument
+            // set parameters by argument
             HashTable[-NodeArray[param].left].value = Eval(NodeArray[arg].left);
 
             // move to next parameter and argument
@@ -443,16 +488,13 @@ int Eval(int root) {
         return eval;
     }
 
+    // if root is already evaluated, return its value
     else if(root < 0) {
         int result = HashTable[-root].value;
-        if(result != 0) {
-            return result;
-        }
+        return result;
     }
 
-    result = root;
-
-    return result;
+    return root;
 }
 
 // print parse tree
@@ -480,8 +522,10 @@ void PRINT(int index, bool startList) {
             cout << ") ";
         }
     }
+    cout << endl;
 }
 
+// print value
 void PRINT_VALUE(int index) {
     if(index < 0) {
         cout << HashTable[-index].symbol << endl;
@@ -524,32 +568,66 @@ void freeNodeArray() {
     }
 }
 
+// count the characters in string
+int count(char ch, string str) {
+    int count = 0;
+    for(char c: str) {
+        if(c == ch) {
+            count++;
+        }
+    }
+
+    return count;
+}
+
 
 int main()
 {
-    string newCommand;
-    int root, result;
+    string newCommand, rowCommand;
+    int root, result, openCount, closeCount;
     while(1) {
-        getline(cin, command);
+        // get input until opening parentheses == closing parentheses
+        command.clear(); 
+        A:
+        cout << ">>> ";
+        
+        getline(cin, rowCommand);
+        command += (" " + rowCommand);
+
+        openCount = count('(', command);
+        closeCount = count(')', command);
+
+        if(openCount > closeCount) {
+            goto A;
+        }
+        else if(openCount < closeCount) {
+            cout << "error: there are more closing parentheses than opening parentheses" << endl;
+            command.clear();
+            goto A;
+        }
+
         newCommand = Preprocessing();
         command = newCommand;
 
         root = Read();
         result = Eval(root);
 
-        if(root != 0) {
-            cout << "Free list's root = " << length(NodeArray)+1 << endl;
-            cout << "Parse tree's root = " << result << endl;
-            cout << endl;
-            PrintNodeArray();
-            PrintHashTable();
+        if(result != 0) {
+            // cout << "Free list's root = " << length(NodeArray)+1 << endl;
+            // cout << "Parse tree's root = " << root << endl;
+            // cout << endl;
+
+            // PrintNodeArray();
+            // PrintHashTable();
+
             if(result >= 0) {
-                PRINT(result, true);
+                if(NodeArray[root].left != GetHashValue("define")) {
+                    PRINT(result, true);
+                }
             }
             else {
                 PRINT_VALUE(result);
             }
-            cout << endl;
 
             // freeNodeArray();
         }
